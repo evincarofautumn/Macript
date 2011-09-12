@@ -44,10 +44,20 @@ use strict;
 $#ARGV == 0 or die "Usage: macript.pl FILE\n";
 open(FILE, $ARGV[0]) or die "Unable to open $ARGV[0]: $!\n";
 
+my $name = qr{[A-Z_][0-9A-Z_]*}i;       # Name (1)
+my $params = qr{(\(                     # Parentheses and contents (2)
+                 ((?:                   # Just contents (3)
+                   (?>"(?:[^"]|\\")+")  # Quoted string
+                   |(?>[^()]+)          # Non-parentheses (no backtracking)
+                   |(?2))*)\))}ox;      # Nested parentheses (2)
+
+my $macro = qr{($name)$params}i;
+
 while (<FILE>) {
-	while (/([A-Z_][0-9A-Z_]*)\((.*?)\)/gio) {
-		my ($n, $a) = ($1, $2);
-		if (my $s = find($n)) { s|$n\(.*?\)|`./$s $a`|e };
+	while (/$macro/g) {
+		my ($n, $a) = ($1, $3);
+		# print STDERR ">>> Name=\"$n\", Params=\"$a\"\n";
+		if (my $s = find($n)) { s|($n)$params|`./$s $a`|e };
 	}
 	print;
 }
@@ -59,4 +69,3 @@ sub find {
 	my @t = map {"$n$_"} ('', qw(.pl .py .sh));
 	(grep {-e && -x _} @t)[0];
 }
-
