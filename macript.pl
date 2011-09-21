@@ -12,13 +12,22 @@ my @extensions = ();
 my $warnings = 0;
 my $force = '';
 my $strip = 0;
-GetOptions("extensions|ext|e:s" => \@extensions,
+my $begin = '';
+my $end = '';
+GetOptions("extensions|ext|x:s" => \@extensions,
            "prefix|p:s" => \$prefix,
            "warnings|warn|w" => \$warnings,
            "force|f:s" => \$force,
-           "strip|s" => \$strip) or pod2usage(2);
+           "strip|s" => \$strip,
+           "begin|b:s" => \$begin,
+           "end|e:s" => \$end) or pod2usage(2);
 @extensions = split(',', join(',', @extensions));
 @extensions = ('', qw(pl py sh)) if (!@extensions);
+
+if ($begin ne '' && $end eq ''
+	|| $begin eq '' && $end ne '') {
+	pod2usage(2);
+}
 
 my $name = qr{[A-Z_][0-9A-Z_]*}i;      # Name (1)
 my $params = qr{(\(                    # Parens and contents (2)
@@ -28,20 +37,28 @@ my $params = qr{(\(                    # Parens and contents (2)
                    |(?2))*)\))}ox;     # Nested parens (2)
 
 my $macro = qr{\Q$prefix\E($name)$params};
+my $active = $begin ne '';
 
 while (<>) {
-	while (/$macro/g) {
-		my ($n, $a) = ($1, $3);
-		if (my $s = find($n)) {
-			s|$prefix($n)$params|`./$s $a`|e;
-		} elsif ($strip) {
-			s|$prefix($n)$params||;
-		} elsif ($warnings) {
-			print STDERR <<"EOF";
+	if (/\Q$end\E/) {
+		$active = 0;
+	}
+	if ($active) {
+		while (/$macro/g) {
+			my ($n, $a) = ($1, $3);
+			if (my $s = find($n)) {
+				s|$prefix($n)$params|`./$s $a`|e;
+			} elsif ($strip) {
+				s|$prefix($n)$params||;
+			} elsif ($warnings) {
+				print STDERR <<"EOF";
 $ARGV:$.: Warning: Macro "$prefix$n" has no match.
 $ARGV:$.: Note: Use --strip to erase macros without matches.
 EOF
+			}
 		}
+	} else {
+		$active = 1 if /\Q$begin\E/;
 	}
 	print;
 }
@@ -84,7 +101,7 @@ Macript - A build tool for invoking scripts like macros.
 
 =over 4
 
-=item B<--extensions>=I<LIST>, B<--ext>=I<LIST>, B<-e> I<LIST>
+=item B<--extensions>=I<LIST>, B<--ext>=I<LIST>, B<-x> I<LIST>
 
 Specify a comma-separated list of script extensions to search for (e.g., B<-e pl>). Defaults to B<--extensions=pl,py,sh,>.
 
@@ -103,6 +120,10 @@ Specify the extension to prefer if multiple executables match a macro.
 =item B<--strip>, B<-s>
 
 Erase invocations that have no matching executable, rather than leaving them in place.
+
+=item B<--begin>=I<BEGIN>, B<--end>=I<END>; B<-b> I<BEGIN>, B<-e> I<END>
+
+Only expand macro invocations that occur after a line containing I<BEGIN> and before a line containing I<END>. If one is given then the other is required.
 
 =back
 
